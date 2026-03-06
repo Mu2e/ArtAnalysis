@@ -1,0 +1,10 @@
+BEGIN_PROLOG
+CrvInference : {
+    module_type : CrvInference
+    KalSeedPtrCollection : "MergeKKDeM"
+    CrvCoincidenceClusterCollection : "SelectReco:CrvCoincidenceClusterFinder"
+    modelFilename : "ArtAnalysis/CrvInference/data/CrvInference_v1.root"
+    modelKey : "model"
+    debugLevel : 0
+}
+END_PROLOG

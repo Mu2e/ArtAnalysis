@@ -1,0 +1,25 @@
+#include "Offline/fcl/minimalMessageService.fcl"
+#include "Offline/fcl/standardServices.fcl"
+#include "ArtAnalysis/CrvInference/fcl/prolog.fcl"
+
+process_name : CrvInferenceTest
+
+source : { module_type : RootInput }
+services : @local::Services.Reco
+
+physics : {
+  producers : {
+    MergeKKDeM : {
+      module_type : MergeKalSeeds
+      KalSeedCollections : [ "KKDeM" ]
+    }
+    CrvInference : {
+      @table::CrvInference
+      debugLevel : 1
+    }
+  }
+
+  testPath : [ MergeKKDeM, CrvInference ]
+  trigger_paths : [ testPath ]
+  end_paths : []
+}
