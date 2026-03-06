@@ -9,17 +9,18 @@ services : @local::Services.Reco
 
 physics : {
   producers : {
-    MergeKKDeM : {
+    MergeKKDe : {
       module_type : MergeKalSeeds
-      KalSeedCollections : [ "KKDeM" ]
+      KalSeedCollections : [ "KKDe" ]
     }
     CrvInference : {
       @table::CrvInference
-      debugLevel : 1
+      KalSeedPtrCollection : "MergeKKDe"
+      debugLevel : 2
     }
   }
 
-  testPath : [ MergeKKDeM, CrvInference ]
+  testPath : [ MergeKKDe, CrvInference ]
   trigger_paths : [ testPath ]
   end_paths : []
 }
