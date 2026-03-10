@@ -20,7 +20,17 @@ physics : {
     }
   }
 
+  analyzers : {
+    CrvInferenceAna : {
+      module_type : CrvInferenceAna
+      CrvInferenceTag : "CrvInference"
+    }
+  }
+
   testPath : [ MergeKKDe, CrvInference ]
+  anaPath : [ CrvInferenceAna ]
   trigger_paths : [ testPath ]
-  end_paths : []
+  end_paths : [ anaPath ]
 }
+
+services.TFileService.fileName : "CrvInferenceAna.root"

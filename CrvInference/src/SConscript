@@ -19,6 +19,8 @@ helper.make_plugins( [
     'art_Persistency_Common',
     'art_Persistency_Provenance',
     'art_Utilities',
+    'art_root_io_TFileService',
+    'art_root_io_tfile_support',
     'canvas',
     'fhiclcpp',
     'fhiclcpp_types',
