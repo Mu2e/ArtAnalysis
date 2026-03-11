@@ -13,12 +13,20 @@ physics : {
       module_type : MergeKalSeeds
       KalSeedCollections : [ "KKDe" ]
     }
+
+    MergeKKAll : {
+      module_type : MergeKalSeeds
+      KalSeedCollections : [ "KKDe", "KKUe", "KKDmu", "KKUmu" ]
+    }
+
     CrvInference : {
       @table::CrvInference
-      KalSeedPtrCollection : "MergeKKDe"
+      KalSeedPtrCollection : "MergeKKAll"
       debugLevel : 2
     }
   }
+
+
 
   analyzers : {
     CrvInferenceAna : {
@@ -27,7 +35,8 @@ physics : {
     }
   }
 
-  testPath : [ MergeKKDe, CrvInference ]
+  # testPath : [ MergeKKDe, CrvInference ]
+  testPath : [ MergeKKAll, CrvInference ]
   anaPath : [ CrvInferenceAna ]
   trigger_paths : [ testPath ]
   end_paths : [ anaPath ]

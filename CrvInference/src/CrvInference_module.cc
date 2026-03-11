@@ -101,7 +101,7 @@ namespace mu2e {
         const auto& cluster = crvCoincHandle->at(i_crv);
 
         // build feature vector
-        // hardcoded order - must match training!
+        // hardcoded order, must match training!
         std::vector<float> features(_nFeatures);
         features[0] = cluster.GetAvgHitPos().x(); // CRV x-position
         features[1] = cluster.GetAvgHitPos().y(); // CRV y-position
