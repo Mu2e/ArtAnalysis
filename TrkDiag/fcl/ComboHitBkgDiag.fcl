@@ -1,30 +1,36 @@
 #
-#  This script runs BkgDiag off of digis
-# David Brown (LBNL) 24 Oct. 2019
+#  This script runs ComboHitBkgDiag off of digis
+# Namitha Chithirasreemadam March 2026
 #
+#include "Production/JobConfig/digitize/prolog.fcl"
 #include "Offline/fcl/minimalMessageService.fcl"
 #include "Offline/fcl/standardServices.fcl"
 #include "Offline/TrkHitReco/fcl/prolog.fcl"
+#include "Offline/TrkReco/fcl/prolog.fcl"
 #include "ArtAnalysis/TrkDiag/fcl/prolog.fcl"
+#include "Offline/TrkPatRec/fcl/prolog.fcl"
+#include "Offline/CalPatRec/fcl/prolog.fcl"
 
-process_name : ComboHitDiag
+process_name : ComboHitBkgDiag
 source : { module_type : RootInput }
 services : @local::Services.Reco
 physics : {
   producers : {
   @table::TrkHitReco.producers
+  @table::CalPatRec.producers
   flagPH : @local::TrkHitReco.producers.FlagBkgHits
+  # flagPH : @local::CalPatRec.producers.DeltaFinder
   }
   analyzers :  {
-    BD : {
-      @table::BD
+    CBD : {
+      @table::CBD
     }
   }
-  EndPath : [BD]
+  EndPath : [CBD]
   RecoPath : [@sequence::TrkHitReco.PrepareHits ]
 }
 services.TimeTracker.printSummary: true
-services.TFileService.fileName: "nts.owner.BD.version.sequence.root"
+services.TFileService.fileName: "nts.owner.CBD.version.sequence.root"
 physics.producers.FlagBkgHits.SaveBkgClusters : true
 services.DbService.purpose: MDC2020_best
 services.DbService.version: v1_3

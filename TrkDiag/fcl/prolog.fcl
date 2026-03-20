@@ -9,11 +9,17 @@ BEGIN_PROLOG
 BD : {
   module_type : BkgDiag
   StrawDigiMCCollection : "compressDigiMCs"
-  ComboHitCollection : "makeSTH"
-  BkgClusterCollection:"FlagBkgHits"
-  BkgClusterHitCollection:"FlagBkgHits"
+  ComboHitCollection : "flagPH"
+  BkgClusterCollection:"flagPH"
+  BkgClusterHitCollection:"flagPH"
   MCPrimary : compressDigiMCs
   ExpectedCHLevel : "uniquepanel"
+}
+
+CBD : {
+  module_type : ComboHitBkgDiag
+  StrawDigiMCCollection : "compressDigiMCs"
+  ComboHitCollection : "flagPH"
 }
 
 SHD : {
