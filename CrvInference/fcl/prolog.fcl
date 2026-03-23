@@ -3,8 +3,7 @@ CrvInference : {
     module_type : CrvInference
     KalSeedPtrCollection : "MergeKKDeM"
     CrvCoincidenceClusterCollection : "SelectReco:CrvCoincidenceClusterFinder"
-    modelFileName : "ArtAnalysis/CrvInference/data/CrvCosmic_v1.root"
-    modelKey : "model"
+    modelFileName : "ArtAnalysis/CrvInference/data/CrvCosmic_v1.0.0.ubj"
     debugLevel : 0 
 }
 END_PROLOG

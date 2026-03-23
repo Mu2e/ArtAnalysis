@@ -3,7 +3,9 @@
 // paired with reconstructed tracks, producing an MVAResult
 // score for each (KalSeed, CrvCoincidenceCluster) pair.
 //
-// Based on Andy Edmonds' TrackQuality_module.cc 
+// Reference for XGBoost C API: 
+// https://cms-ml.github.io/documentation/inference/xgboost.html
+// 
 // Sam Grant 2026
 
 // art
@@ -21,17 +23,19 @@
 #include "Offline/DataProducts/inc/SurfaceId.hh"
 #include "Offline/ConfigTools/inc/ConfigFileLookupPolicy.hh"
 
-// TMVA
-#include "TMVA/RBDT.hxx"
+// XGBoost
+#include <xgboost/c_api.h>
 
 // C++
 #include <iostream>
 #include <string>
 #include <vector>
+#include <cmath>
+#include <stdexcept>
 
 namespace mu2e {
 
-  // assns to link objects within art::Event
+  // type alias for associations
   using CrvInferenceAssns = art::Assns<KalSeed, CrvCoincidenceCluster, MVAResult>;
 
   class CrvInference : public art::EDProducer {
@@ -43,13 +47,13 @@ namespace mu2e {
 
       fhicl::Atom<art::InputTag> kalSeedPtrTag{Name("KalSeedPtrCollection"), Comment("Input tag for KalSeedPtrCollection")};
       fhicl::Atom<art::InputTag> crvCoincidenceTag{Name("CrvCoincidenceClusterCollection"), Comment("Input tag for CrvCoincidenceClusterCollection")};
-      fhicl::Atom<std::string> modelFileName{Name("modelFileName"), Comment("Path to RBDT .root model file")}; // 
-      fhicl::Atom<std::string> modelKey{Name("modelKey"), Comment("Key name within the ROOT file")};
+      fhicl::Atom<std::string> modelFileName{Name("modelFileName"), Comment("Path to XGBoost .ubj model file")};
       fhicl::Atom<int> debug{Name("debugLevel"), Comment("Debug printout level"), 0};
     };
 
     using Parameters = art::EDProducer::Table<Config>;
     explicit CrvInference(const Parameters& conf);
+    ~CrvInference();
 
   private:
     void produce(art::Event& event) override;
@@ -58,35 +62,46 @@ namespace mu2e {
     art::InputTag _crvCoincidenceTag;
     int _debug;
 
-    TMVA::Experimental::RBDT _bdt;
+    // Booster object
+    BoosterHandle _booster;
 
-    static constexpr size_t _nFeatures = 9;
+    // Number of features is fixed, must match training!
+    static constexpr size_t _nFeatures = 8;
   };
 
   CrvInference::CrvInference(const Parameters& conf) :
     art::EDProducer{conf},
     _kalSeedPtrTag(conf().kalSeedPtrTag()),
     _crvCoincidenceTag(conf().crvCoincidenceTag()),
-    _debug(conf().debug()),
-    _bdt(conf().modelKey(), ConfigFileLookupPolicy()(conf().modelFileName()))
+    _debug(conf().debug())
   {
     produces<CrvInferenceAssns>();
+
+    // Load XGBoost model
+    if (XGBoosterCreate(nullptr, 0, &_booster) != 0)
+      throw std::runtime_error(std::string("XGBoosterCreate failed: ") + XGBGetLastError());
+
+    std::string modelPath = ConfigFileLookupPolicy()(conf().modelFileName());
+    if (XGBoosterLoadModel(_booster, modelPath.c_str()) != 0)
+      throw std::runtime_error(std::string("XGBoosterLoadModel failed: ") + XGBGetLastError());
+  }
+
+  CrvInference::~CrvInference() {
+    XGBoosterFree(_booster);
   }
 
   void CrvInference::produce(art::Event& event) {
 
     auto assns = std::make_unique<CrvInferenceAssns>();
 
-    // get inputs
     const auto& kalSeedPtrHandle = event.getValidHandle<KalSeedPtrCollection>(_kalSeedPtrTag);
     const auto& crvCoincHandle = event.getValidHandle<CrvCoincidenceClusterCollection>(_crvCoincidenceTag);
 
+    // Iterate through kalseeds
     for (size_t i_ks = 0; i_ks < kalSeedPtrHandle->size(); ++i_ks) {
       const auto& kalSeedPtr = kalSeedPtrHandle->at(i_ks);
       const auto& kalSeed = *kalSeedPtr;
 
-      // find tracker mid and 
-      // extract track time
       double trkTime = -9999;
       bool ttMidFound = false;
       for (const auto& kinter : kalSeed.intersections()) {
@@ -96,29 +111,35 @@ namespace mu2e {
           break;
         }
       }
-
+      
+      // iterate through coincidence clusters
       for (size_t i_crv = 0; i_crv < crvCoincHandle->size(); ++i_crv) {
         const auto& cluster = crvCoincHandle->at(i_crv);
 
-        // build feature vector
-        // hardcoded order, must match training!
+        // build feature vector (order must match training!)
         std::vector<float> features(_nFeatures);
-        features[0] = cluster.GetAvgHitPos().x(); // CRV x-position
-        features[1] = cluster.GetAvgHitPos().y(); // CRV y-position
-        features[2] = cluster.GetAvgHitPos().z(); // CRV z-position
-        features[3] = cluster.GetPEs(); // CRV total PEs
-        features[4] = trkTime - cluster.GetAvgHitTime(); // Track-CRV time difference
-        features[5] = cluster.GetCrvRecoPulses().size(); // Number of hits (reco pulses) in the cluster
-        features[6] = cluster.GetLayers().size(); // Number of layers hit
-        features[7] = cluster.GetSlope(); // Angle 
-        features[8] = cluster.GetCrvSectorType(); // Sector
+        features[0] = cluster.GetAvgHitPos().x();
+        features[1] = cluster.GetAvgHitPos().y();
+        features[2] = cluster.GetAvgHitPos().z();
+        features[3] = cluster.GetPEs();
+        features[4] = trkTime - cluster.GetAvgHitTime();
+        features[5] = cluster.GetCrvRecoPulses().size();
+        features[6] = cluster.GetLayers().size();
+        features[7] = cluster.GetSlope();
 
-        // run the inference
-        auto output = _bdt.Compute(features);
-        float score = output[0];
+        // run XGBoost inference
+        // See reference in preamble comments...
+        float score = 0.0f;
+        if (ttMidFound) {
+          DMatrixHandle dmat;
+          XGDMatrixCreateFromMat(features.data(), 1, _nFeatures, NAN, &dmat);
 
-        if (!ttMidFound) {
-          score = 0;
+          bst_ulong out_len;
+          const float* out_result;
+          XGBoosterPredict(_booster, dmat, 0, 0, 0, &out_len, &out_result);
+
+          score = out_result[0];
+          XGDMatrixFree(dmat);
         }
 
         if (_debug > 0) {
@@ -133,11 +154,10 @@ namespace mu2e {
                     << ", crv_y = " << features[1]
                     << ", crv_z = " << features[2] << std::endl
                     << "  PEs = " << features[3]
-                    << ", dt = " << features[4] << std::endl
-                    << "  nHits = " << features[5]
-                    << ", nLayers = " << features[6] << std::endl
-                    << "  slope = " << features[7]
-                    << ", sector = " << (int)features[8] << std::endl
+                    << ", dt = " << features[4] 
+                    << ", nHits = " << features[5] 
+                    << ", nLayers = " << features[6]
+                    << ",  slope = " << features[7] << std::endl
                     << "  score = " << score << std::endl;
         }
 
@@ -146,6 +166,7 @@ namespace mu2e {
       }
     }
 
+    // Add the association to the art::Event
     event.put(std::move(assns));
   }
 
