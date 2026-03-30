@@ -22,6 +22,8 @@
 #include "Offline/RecoDataProducts/inc/KalSeed.hh"
 #include "Offline/RecoDataProducts/inc/MVAResult.hh"
 #include "ArtAnalysis/TrkDiag/inc/TrkQual_ANN1.hxx"
+// ONNXRuntime
+#include "onnxruntime/core/session/onnxruntime_cxx_api.h"
 // C++
 #include <iostream>
 #include <fstream>
@@ -66,20 +68,59 @@ namespace mu2e
 
     std::shared_ptr<TMVA_SOFIE_TrkQual_ANN1::Session> mva_;
 
+    Ort::Env _env;
+    Ort::SessionOptions _session_options;
+    Ort::Session _session;
+    Ort::AllocatorWithDefaultOptions _allocator;
+    Ort::AllocatedStringPtr _input_name;
+    Ort::TypeInfo _type_info;
+    Ort::ConstTensorTypeAndShapeInfo _tensor_info;
+    std::vector<int64_t> _input_shape;
+    size_t _total_size;
+    Ort::MemoryInfo _memory_info;
+    Ort::AllocatedStringPtr _output_name;
+
+    std::string print_shape(const std::vector<std::int64_t>& v) {
+      std::stringstream ss("");
+      for (std::size_t i = 0; i < v.size() - 1; i++) ss << v[i] << "x";
+      ss << v[v.size() - 1];
+      return ss.str();
+    }
   };
 
   TrackQuality::TrackQuality(const Parameters& conf) :
     art::EDProducer{conf},
     _kalSeedPtrTag(conf().kalSeedPtrTag()),
     _printMVA(conf().printMVA()),
-    _debug(conf().debug())
+    _debug(conf().debug()),
+
+    _env(ORT_LOGGING_LEVEL_WARNING, "ONNXInference"),
+    _session(_env, "ArtAnalysis/TrkDiag/data/TrkQual_ANN1_v2.onnx", _session_options),
+    _input_name(_session.GetInputNameAllocated(0, _allocator)),
+    _type_info(_session.GetInputTypeInfo(0)),
+    _tensor_info(_type_info.GetTensorTypeAndShapeInfo()),
+    _input_shape(_tensor_info.GetShape()), // Get input shape from model
+    _memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)),
+    _output_name(_session.GetOutputNameAllocated(0, _allocator))
     {
       produces<MVAResultCollection>();
 
       ConfigFileLookupPolicy configFile;
       mva_ = std::make_shared<TMVA_SOFIE_TrkQual_ANN1::Session>(configFile(conf().datFilename()));
-    }
 
+
+      // Handle dynamic dimensions if needed
+      for (auto& dim : _input_shape) {
+        if (dim == -1) { dim = 1; }  // Set dynamic dims to 1 (or your desired value)
+      }
+
+      // Calculate total size
+      _total_size = 1;
+      for (auto dim : _input_shape) {
+        _total_size *= dim;
+      }
+    }
+  
   void TrackQuality::produce(art::Event& event ) {
     // create output
     unique_ptr<MVAResultCollection> mvacol(new MVAResultCollection());
@@ -88,6 +129,9 @@ namespace mu2e
     art::Handle<KalSeedPtrCollection> kalSeedPtrHandle;
     event.getByLabel(_kalSeedPtrTag, kalSeedPtrHandle);
     const auto& kalSeedPtrs = *kalSeedPtrHandle;
+
+    // Prepare input tensor
+    std::vector<float> input_tensor_values(_total_size, 0.0f);  // Initialize with zeros
 
     // Go through the tracks and calculate their track qualities
     for (const auto& kalSeedPtr : kalSeedPtrs) {
@@ -135,6 +179,11 @@ namespace mu2e
       features[3] = (double) nnullambig / nactive;
       features[4] = kalSeed.fitConsistency();
       features[6] = (double)nmatactive / nactive;
+      input_tensor_values[0] = nactive;
+      input_tensor_values[1] = (double) nactive / nhits;
+      input_tensor_values[3] = (double) nnullambig / nactive;
+      input_tensor_values[4] = kalSeed.fitConsistency();
+      input_tensor_values[6] = (double)nmatactive / nactive;
 
       // Now get the features that are for the entrance of the trackre
       bool entrance_found = false;
@@ -143,6 +192,8 @@ namespace mu2e
         if (kinter.surfaceId() == SurfaceIdDetail::TT_Front) { // we only want the tracker entrance (sid=0)
           features[2] = sqrt(kinter.loopHelix().paramVar(KinKal::LoopHelix::t0_));
           features[5] = kinter.momerr();
+          input_tensor_values[2] = sqrt(kinter.loopHelix().paramVar(KinKal::LoopHelix::t0_));
+          input_tensor_values[5] = kinter.momerr();
           entrance_found = true;
           break;
         }
@@ -150,18 +201,41 @@ namespace mu2e
       if (!entrance_found) {
         features[2] = -9999;
         features[5] = -9999;
+        input_tensor_values[2] = -9999;
+        input_tensor_values[5] = -9999;
       }
 
       std::vector<float> mvaout = mva_->infer(features.data());
 
+      Ort::Value input_tensor = Ort::Value::CreateTensor<float>(_memory_info,
+                                                                input_tensor_values.data(),
+                                                                input_tensor_values.size(),
+                                                                _input_shape.data(),
+                                                                _input_shape.size()
+                                                                );
+      // Run inference
+      const char* input_names[] = {_input_name.get()};
+      const char* output_names[] = {_output_name.get()};
+      auto output_tensors = _session.Run(
+                                         Ort::RunOptions{nullptr},
+                                         input_names,
+                                         &input_tensor,
+                                         1,
+                                         output_names,
+                                         1
+                                         );
+      // Get output
+      float* output_data = output_tensors[0].GetTensorMutableData<float>();
+
       if (!entrance_found) {
         mvaout[0] = 0; // this is not a good track
+        output_data[0] = 0;
       }
 
       if(_debug > 0) {
-        printf("[TrackQuality::%s::%s] Inputs = %.0f, %.4f, %.4f, %.4f, %.4f, %.4f %.4f --> output = %.4f\n",
+        printf("[TrackQuality::%s::%s] Inputs = %.0f, %.4f, %.4f, %.4f, %.4f, %.4f %.4f --> output = %.4f (ORT: %.4f)\n",
                __func__, moduleDescription().moduleLabel().c_str(),
-               features[0], features[1], features[2], features[3], features[4], features[5], features[6], mvaout[0]);
+               features[0], features[1], features[2], features[3], features[4], features[5], features[6], mvaout[0], output_data[0]);
       }
 
       mvacol->push_back(MVAResult(mvaout[0]));
