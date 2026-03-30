@@ -52,6 +52,7 @@ namespace mu2e
         fhicl::Atom<art::InputTag> kalSeedPtrTag{Name("KalSeedPtrCollection"), Comment("Input tag for KalSeedPtrCollection")};
         fhicl::Atom<bool> printMVA{Name("PrintMVA"), Comment("Print the MVA used"), false};
         fhicl::Atom<std::string> datFilename{Name("datFilename"), Comment("Filename for the .dat file to use")};
+        fhicl::Atom<std::string> onnxFilename{Name("onnxFilename"), Comment("Filename for the .onnx file to use")};
         fhicl::Atom<int> debug{Name("debugLevel"), Comment("Debug printout level"), 0};
       };
 
@@ -67,6 +68,8 @@ namespace mu2e
       int _debug;
 
     std::shared_ptr<TMVA_SOFIE_TrkQual_ANN1::Session> mva_;
+
+    ConfigFileLookupPolicy _configFileLookup;
 
     Ort::Env _env;
     Ort::SessionOptions _session_options;
@@ -95,7 +98,7 @@ namespace mu2e
     _debug(conf().debug()),
 
     _env(ORT_LOGGING_LEVEL_WARNING, "ONNXInference"),
-    _session(_env, "ArtAnalysis/TrkDiag/data/TrkQual_ANN1_v2.onnx", _session_options),
+    _session(_env, _configFileLookup(conf().onnxFilename()).c_str(), _session_options),
     _input_name(_session.GetInputNameAllocated(0, _allocator)),
     _type_info(_session.GetInputTypeInfo(0)),
     _tensor_info(_type_info.GetTensorTypeAndShapeInfo()),
@@ -105,8 +108,7 @@ namespace mu2e
     {
       produces<MVAResultCollection>();
 
-      ConfigFileLookupPolicy configFile;
-      mva_ = std::make_shared<TMVA_SOFIE_TrkQual_ANN1::Session>(configFile(conf().datFilename()));
+      mva_ = std::make_shared<TMVA_SOFIE_TrkQual_ANN1::Session>(_configFileLookup(conf().datFilename()));
 
 
       // Handle dynamic dimensions if needed
