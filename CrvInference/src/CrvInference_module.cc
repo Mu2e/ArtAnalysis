@@ -132,14 +132,25 @@ namespace mu2e {
         float score = 0.0f;
         if (ttMidFound) {
           DMatrixHandle dmat;
-          XGDMatrixCreateFromMat(features.data(), 1, _nFeatures, NAN, &dmat);
+          if (XGDMatrixCreateFromMat(features.data(), 1, _nFeatures, NAN, &dmat) != 0) {
+            throw std::runtime_error(std::string("XGDMatrixCreateFromMat failed: ") + XGBGetLastError());
+          }
 
-          bst_ulong out_len;
-          const float* out_result;
-          XGBoosterPredict(_booster, dmat, 0, 0, 0, &out_len, &out_result);
+          bst_ulong out_len = 0;
+          const float* out_result = nullptr;
+          if (XGBoosterPredict(_booster, dmat, 0, 0, 0, &out_len, &out_result) != 0) {
+            XGDMatrixFree(dmat);
+            throw std::runtime_error(std::string("XGBoosterPredict failed: ") + XGBGetLastError());
+          }
+          if (out_len < 1 || out_result == nullptr) {
+            XGDMatrixFree(dmat);
+            throw std::runtime_error("XGBoosterPredict returned no result");
+          }
 
           score = out_result[0];
-          XGDMatrixFree(dmat);
+          if (XGDMatrixFree(dmat) != 0) {
+            throw std::runtime_error(std::string("XGDMatrixFree failed: ") + XGBGetLastError());
+          }
         }
 
         if (_debug > 0) {
