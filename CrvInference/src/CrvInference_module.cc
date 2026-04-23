@@ -105,6 +105,9 @@ namespace mu2e {
     const auto& kalSeedPtrHandle = event.getValidHandle<KalSeedPtrCollection>(_kalSeedPtrTag);
     const auto& crvCoincHandle = event.getValidHandle<CrvCoincidenceClusterCollection>(_crvCoincidenceTag);
 
+    // feature vector reused across all (track, cluster) pairs
+    std::vector<float> features(_nFeatures);
+
     // Iterate through kalseeds
     for (size_t i_ks = 0; i_ks < kalSeedPtrHandle->size(); ++i_ks) {
       const auto& kalSeedPtr = kalSeedPtrHandle->at(i_ks);
@@ -127,7 +130,6 @@ namespace mu2e {
         const auto& cluster = crvCoincHandle->at(i_crv);
 
         // build feature vector (order must match training!)
-        std::vector<float> features(_nFeatures);
         features[0] = cluster.GetAvgHitPos().x();
         features[1] = cluster.GetAvgHitPos().y();
         features[2] = cluster.GetAvgHitPos().z();

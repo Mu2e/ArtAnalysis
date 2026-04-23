@@ -26,8 +26,6 @@ physics : {
     }
   }
 
-
-
   analyzers : {
     CrvInferenceAna : {
       module_type : CrvInferenceAna
@@ -35,7 +33,6 @@ physics : {
     }
   }
 
-  # testPath : [ MergeKKDe, CrvInference ]
   testPath : [ MergeKKAll, CrvInference ]
   anaPath : [ CrvInferenceAna ]
   trigger_paths : [ testPath ]
