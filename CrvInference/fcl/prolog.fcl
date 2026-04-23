@@ -1,7 +1,7 @@
 BEGIN_PROLOG
 CrvInference : {
     module_type : CrvInference
-    KalSeedPtrCollection : "MergeKKDeM"
+    KalSeedPtrCollection : "MergeKKDe"
     CrvCoincidenceClusterCollection : "SelectReco:CrvCoincidenceClusterFinder"
     modelFileName : "ArtAnalysis/CrvInference/data/CrvCosmic_v1.0.0.ubj"
     debugLevel : 0 
