@@ -4,7 +4,15 @@ cet_build_plugin(CrvInference art::module
       Offline::RecoDataProducts
       Offline::DataProducts
       Offline::ConfigTools
-      ROOT::TMVA
+      xgboost
+)
+
+cet_build_plugin(CrvInferenceAna art::module
+    REG_SOURCE src/CrvInferenceAna_module.cc
+    LIBRARIES REG
+      Offline::RecoDataProducts
+      art_root_io::TFileService_service
+      ROOT::Hist
 )
 
 install_fhicl(SUBDIRS fcl SUBDIRNAME ArtAnalysis/CrvInference/fcl)
