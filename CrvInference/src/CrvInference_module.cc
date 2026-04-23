@@ -84,6 +84,14 @@ namespace mu2e {
     std::string modelPath = ConfigFileLookupPolicy()(conf().modelFileName());
     if (XGBoosterLoadModel(_booster, modelPath.c_str()) != 0)
       throw std::runtime_error(std::string("XGBoosterLoadModel failed: ") + XGBGetLastError());
+
+    // verify the loaded model matches the expected feature count
+    bst_ulong nFeaturesModel = 0;
+    if (XGBoosterGetNumFeature(_booster, &nFeaturesModel) != 0)
+      throw std::runtime_error(std::string("XGBoosterGetNumFeature failed: ") + XGBGetLastError());
+    if (nFeaturesModel != _nFeatures)
+      throw std::runtime_error("Model feature count (" + std::to_string(nFeaturesModel) +
+                               ") does not match expected (" + std::to_string(_nFeatures) + ")");
   }
 
   CrvInference::~CrvInference() {
