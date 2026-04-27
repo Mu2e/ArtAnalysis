@@ -23,6 +23,8 @@
 #include "ArtAnalysis/TrkDiag/inc/TrackPID.hxx"
 #include "Offline/GeometryService/inc/GeomHandle.hh"
 #include "Offline/CalorimeterGeom/inc/DiskCalorimeter.hh"
+//ONNX
+#include "onnxruntime/core/session/onnxruntime_cxx_api.h"
 // C++
 #include <iostream>
 #include <fstream>
@@ -65,6 +67,26 @@ namespace mu2e {
       int _debug;
 
       std::shared_ptr<TMVA_SOFIE_TrackPID::Session> mva_;
+
+      // Below is copied from TrackQuality_module.cc
+      Ort::Env _env;
+      Ort::SessionOptions _session_options;
+      Ort::Session _session;
+      Ort::AllocatorWithDefaultOptions _allocator;
+      Ort::AllocatedStringPtr _input_name;
+      Ort::TypeInfo _type_info;
+      Ort::ConstTensorTypeAndShapeInfo _tensor_info;
+      std::vector<int64_t> _input_shape;
+      size_t _total_size;
+      Ort::MemoryInfo _memory_info;
+      Ort::AllocatedStringPtr _output_name;
+
+      std::string print_shape(const std::vector<std::int64_t>& v) {
+        std::stringstream ss("");
+        for (std::size_t i = 0; i < v.size() - 1; i++) ss << v[i] << "x";
+        ss << v[v.size() - 1];
+        return ss.str();
+      }
   };
 
   TrackPID::TrackPID(const Parameters& conf) :
@@ -73,12 +95,30 @@ namespace mu2e {
     _dtoffset(conf().DT()),
     _kalSeedPtrTag(conf().kalSeedPtrTag()),
     _printMVA(conf().printMVA()),
-    _debug(conf().debug())
+    _debug(conf().debug()),
+    _env(ORT_LOGGING_LEVEL_WARNING, "ONNXInference"),
+    _session(_env, "ArtAnalysis/TrkDiag/data/TrkQual_ANN1_v2.onnx", _session_options),
+    _input_name(_session.GetInputNameAllocated(0, _allocator)),
+    _type_info(_session.GetInputTypeInfo(0)),
+    _tensor_info(_type_info.GetTensorTypeAndShapeInfo()),
+    _input_shape(_tensor_info.GetShape()), // Get input shape from model
+    _memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)),
+    _output_name(_session.GetOutputNameAllocated(0, _allocator))
   {
     produces<MVAResultCollection>();
 
     ConfigFileLookupPolicy configFile;
     mva_ = std::make_shared<TMVA_SOFIE_TrackPID::Session>(configFile(conf().datFilename()));
+    // Handle dynamic dimensions if needed
+    for (auto& dim : _input_shape) {
+      if (dim == -1) { dim = 1; }  // Set dynamic dims to 1 (or your desired value)
+    }
+
+      // Calculate total size
+      _total_size = 1;
+      for (auto dim : _input_shape) {
+        _total_size *= dim;
+      }
   }
 
   void TrackPID::produce(art::Event& event ) {
@@ -89,6 +129,8 @@ namespace mu2e {
     art::Handle<KalSeedPtrCollection> kalSeedPtrHandle;
     event.getByLabel(_kalSeedPtrTag, kalSeedPtrHandle);
     const auto& kalSeedPtrs = *kalSeedPtrHandle;
+
+    std::vector<float> input_tensor_values(_total_size, 0.0f);  // Initialize with zeros
 
     // Go through the tracks and calculate the track PID
     for (const auto& kalSeedPtr : kalSeedPtrs) {
@@ -114,14 +156,43 @@ namespace mu2e {
           // the following includes the (Calibrated) light-propagation time delay.  It should eventually be put in the reconstruction FIXME!
           // This velocity should come from conditions FIXME!
           features[3] = tchs.t0().t0()-tchs.time()- std::min((float)200.0,std::max((float)0.0,tchs.hitLen()))*0.005 - _dtoffset;
+
+          // For ONNX:
+          input_tensor_values[0] = features[0];
+          input_tensor_values[1] = features[1];
+          input_tensor_values[2] = features[2];
+          input_tensor_values[3] = features[3]; 
+          Ort::Value input_tensor = Ort::Value::CreateTensor<float>(_memory_info,
+                                                                input_tensor_values.data(),
+                                                                input_tensor_values.size(),
+                                                                _input_shape.data(),
+                                                                _input_shape.size()
+                                                                );
+          // Run inference
+          const char* input_names[] = {_input_name.get()};
+          const char* output_names[] = {_output_name.get()};
+          auto output_tensors = _session.Run(
+                                            Ort::RunOptions{nullptr},
+                                            input_names,
+                                            &input_tensor,
+                                            1,
+                                            output_names,
+                                            1
+                                            );
+          // Get output
+          float* output_data = output_tensors[0].GetTensorMutableData<float>();
+              
           // hard cut on the energy difference.  This rejects cosmic rays which hit the calo and produce an upstream-going track that is then
           // reconstructed as a downstream particle associated to this cluster
           if(features[0] < _maxde){
             // evaluate the MVA
             auto mvaout = mva_->infer(features.data());
             mvaval = mvaout[0];
+          } else {
+             output_data[0] = 0; // for ONNX, set the output to 0 if the energy difference is above the threshold
           }
-          else if (_debug > 0) {
+
+          if (_debug > 0) {
             printf("energy difference at %f, above threshold %f", features[0], _maxde);
           }
         }
