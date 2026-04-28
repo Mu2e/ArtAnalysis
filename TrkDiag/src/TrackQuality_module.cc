@@ -21,7 +21,6 @@
 // data
 #include "Offline/RecoDataProducts/inc/KalSeed.hh"
 #include "Offline/RecoDataProducts/inc/MVAResult.hh"
-#include "ArtAnalysis/TrkDiag/inc/TrkQual_ANN1.hxx"
 // ONNXRuntime
 #include "onnxruntime/core/session/onnxruntime_cxx_api.h"
 // C++
@@ -35,10 +34,6 @@ using namespace std;
 using CLHEP::Hep3Vector;
 using CLHEP::HepVector;
 
-namespace TMVA_SOFIE_TrkQual_ANN1 {
-  class Session;
-}
-
 namespace mu2e
 {
 
@@ -51,7 +46,6 @@ namespace mu2e
 
         fhicl::Atom<art::InputTag> kalSeedPtrTag{Name("KalSeedPtrCollection"), Comment("Input tag for KalSeedPtrCollection")};
         fhicl::Atom<bool> printMVA{Name("PrintMVA"), Comment("Print the MVA used"), false};
-        fhicl::Atom<std::string> datFilename{Name("datFilename"), Comment("Filename for the .dat file to use")};
         fhicl::Atom<std::string> onnxFilename{Name("onnxFilename"), Comment("Filename for the .onnx file to use")};
         fhicl::Atom<int> debug{Name("debugLevel"), Comment("Debug printout level"), 0};
       };
@@ -66,8 +60,6 @@ namespace mu2e
       art::InputTag _kalSeedPtrTag;
       bool _printMVA;
       int _debug;
-
-    std::shared_ptr<TMVA_SOFIE_TrkQual_ANN1::Session> mva_;
 
     ConfigFileLookupPolicy _configFileLookup;
 
@@ -108,9 +100,6 @@ namespace mu2e
     {
       produces<MVAResultCollection>();
 
-      mva_ = std::make_shared<TMVA_SOFIE_TrkQual_ANN1::Session>(_configFileLookup(conf().datFilename()));
-
-
       // Handle dynamic dimensions if needed
       for (auto& dim : _input_shape) {
         if (dim == -1) { dim = 1; }  // Set dynamic dims to 1 (or your desired value)
@@ -122,7 +111,7 @@ namespace mu2e
         _total_size *= dim;
       }
     }
-  
+
   void TrackQuality::produce(art::Event& event ) {
     // create output
     unique_ptr<MVAResultCollection> mvacol(new MVAResultCollection());
@@ -133,12 +122,12 @@ namespace mu2e
     const auto& kalSeedPtrs = *kalSeedPtrHandle;
 
     // Prepare input tensor
-    std::vector<float> input_tensor_values(_total_size, 0.0f);  // Initialize with zeros
+    std::vector<float> features(_total_size, 0.0f);  // Initialize with zeros
+
 
     // Go through the tracks and calculate their track qualities
     for (const auto& kalSeedPtr : kalSeedPtrs) {
       const auto& kalSeed = *kalSeedPtr;
-      std::array<float,7> features; // the features we trained on
 
       // fill the hit count variables
       int nhits = 0; int nactive = 0; int ndouble = 0; int ndactive = 0; int nnullambig = 0;
@@ -181,11 +170,6 @@ namespace mu2e
       features[3] = (double) nnullambig / nactive;
       features[4] = kalSeed.fitConsistency();
       features[6] = (double)nmatactive / nactive;
-      input_tensor_values[0] = nactive;
-      input_tensor_values[1] = (double) nactive / nhits;
-      input_tensor_values[3] = (double) nnullambig / nactive;
-      input_tensor_values[4] = kalSeed.fitConsistency();
-      input_tensor_values[6] = (double)nmatactive / nactive;
 
       // Now get the features that are for the entrance of the trackre
       bool entrance_found = false;
@@ -194,8 +178,6 @@ namespace mu2e
         if (kinter.surfaceId() == SurfaceIdDetail::TT_Front) { // we only want the tracker entrance (sid=0)
           features[2] = sqrt(kinter.loopHelix().paramVar(KinKal::LoopHelix::t0_));
           features[5] = kinter.momerr();
-          input_tensor_values[2] = sqrt(kinter.loopHelix().paramVar(KinKal::LoopHelix::t0_));
-          input_tensor_values[5] = kinter.momerr();
           entrance_found = true;
           break;
         }
@@ -203,15 +185,11 @@ namespace mu2e
       if (!entrance_found) {
         features[2] = -9999;
         features[5] = -9999;
-        input_tensor_values[2] = -9999;
-        input_tensor_values[5] = -9999;
       }
 
-      std::vector<float> mvaout = mva_->infer(features.data());
-
       Ort::Value input_tensor = Ort::Value::CreateTensor<float>(_memory_info,
-                                                                input_tensor_values.data(),
-                                                                input_tensor_values.size(),
+                                                                features.data(),
+                                                                features.size(),
                                                                 _input_shape.data(),
                                                                 _input_shape.size()
                                                                 );
@@ -227,17 +205,16 @@ namespace mu2e
                                          1
                                          );
       // Get output
-      float* output_data = output_tensors[0].GetTensorMutableData<float>();
+      float* mvaout = output_tensors[0].GetTensorMutableData<float>();
 
       if (!entrance_found) {
         mvaout[0] = 0; // this is not a good track
-        output_data[0] = 0;
       }
 
       if(_debug > 0) {
-        printf("[TrackQuality::%s::%s] Inputs = %.0f, %.4f, %.4f, %.4f, %.4f, %.4f %.4f --> output = %.4f (ORT: %.4f)\n",
+        printf("[TrackQuality::%s::%s] Inputs = %.0f, %.4f, %.4f, %.4f, %.4f, %.4f %.4f --> output = %.4f\n",
                __func__, moduleDescription().moduleLabel().c_str(),
-               features[0], features[1], features[2], features[3], features[4], features[5], features[6], mvaout[0], output_data[0]);
+               features[0], features[1], features[2], features[3], features[4], features[5], features[6], mvaout[0]);
       }
 
       mvacol->push_back(MVAResult(mvaout[0]));
