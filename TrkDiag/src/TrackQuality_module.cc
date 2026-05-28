@@ -22,7 +22,7 @@
 #include "Offline/RecoDataProducts/inc/KalSeed.hh"
 #include "Offline/RecoDataProducts/inc/MVAResult.hh"
 // ONNXRuntime
-#include "onnxruntime/core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime/onnxruntime_cxx_api.h"
 // C++
 #include <iostream>
 #include <fstream>
