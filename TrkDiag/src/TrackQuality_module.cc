@@ -81,7 +81,7 @@ namespace mu2e
     _kalSeedPtrTag(conf().kalSeedPtrTag()),
     _printMVA(conf().printMVA()),
     _debug(conf().debug()),
-
+    // Note that the following is required to be in order
     _env(ORT_LOGGING_LEVEL_WARNING, "ONNXInference"),
     _session(_env, _configFileLookup(conf().onnxFilename()).c_str(), _session_options),
     _input_name(_session.GetInputNameAllocated(0, _allocator)),
