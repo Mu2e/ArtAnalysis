@@ -95,7 +95,7 @@ namespace mu2e
 
       // Handle dynamic dimensions if needed
       for (auto& dim : _input_shape) {
-        if (dim == -1) { dim = 1; }  // Set dynamic dims to 1 (or your desired value)
+        if (dim == -1) { dim = 1; }  // Set dynamic dims to 1 (or your desired value) TODO: can set to any number so we can batch N tracks per event
       }
 
       // Calculate total size
