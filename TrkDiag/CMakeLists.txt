@@ -165,8 +165,8 @@ cet_build_plugin(TrkGeomTest art::module
 art_dictionary( NO_CHECK_CLASS_VERSION # For some reason this segfaults
     CLASSES_DEF_XML ${CMAKE_CURRENT_SOURCE_DIR}/src/classes_def.xml
     CLASSES_H ${CMAKE_CURRENT_SOURCE_DIR}/src/classes.h
-     DICTIONARY_LIBRARIES
-     ArtAnalysis::TrkDiag
+    DICTIONARY_LIBRARIES
+    ArtAnalysis::TrkDiag
 )
 
 install(DIRECTORY data DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ArtAnalysis/TrkDiag)
