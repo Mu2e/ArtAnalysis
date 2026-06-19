@@ -24,5 +24,6 @@ include(ArtDictionary)
 include(BuildPlugins)
 
 add_subdirectory(CrvInference)
+add_subdirectory(TrkDiag)
 
 cet_cmake_config()
