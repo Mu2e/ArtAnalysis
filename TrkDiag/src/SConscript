@@ -103,7 +103,8 @@ helper.make_plugins( [
   'TMVA',
   'ROOTTMVASofie',
     'pthread',
-        'onnxruntime'
+        'onnxruntime',
+    'xgboost'
     ] )
 
 helper.make_dict_and_map( [
