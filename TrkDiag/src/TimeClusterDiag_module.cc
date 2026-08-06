@@ -510,7 +510,7 @@ namespace mu2e {
       tcinfo._tcalo = _ttcalc.caloClusterTime(*tc._caloCluster,_pitch);
       tcinfo._dtcalo = _ttcalc.caloClusterTime(*tc._caloCluster,_pitch) - tc._t0._t0;
       // calculate the cluster position.  Currently the Z is in disk coordinates and must be translated, FIXME!
-      XYZVectorF cog = XYZVectorF(calo->geomUtil().mu2eToTracker(calo->geomUtil().diskFFToMu2e(tc._caloCluster->diskID(),tc._caloCluster->cog3Vector())));
+      XYZVectorF cog = XYZVectorF(calo->mu2eToTracker(calo->diskFFToMu2e(tc._caloCluster->diskID(),tc._caloCluster->cog3Vector())));
       tcinfo._cog = cog;
     }
     // mc info

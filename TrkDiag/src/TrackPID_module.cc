@@ -105,7 +105,7 @@ namespace mu2e {
           XYZVectorD trkmom = kalSeed.nearestSegment(tchs._rptoca)->momentum3();
           features[0] = cc->energyDep() - sqrt(trkmom.Mag2());
           // move into detector coordinates.  Yikes!!
-          XYZVectorF cpos = XYZVectorF(calo->geomUtil().mu2eToTracker(calo->geomUtil().diskFFToMu2e( cc->diskID(), cc->cog3Vector())));
+          XYZVectorF cpos = XYZVectorF(calo->mu2eToTracker(calo->diskFFToMu2e( cc->diskID(), cc->cog3Vector())));
           features[1] = sqrt(cpos.Perp2());
           // compute transverse direction WRT position
           cpos.SetZ(0.0);
