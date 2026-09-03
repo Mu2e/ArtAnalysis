@@ -11,6 +11,7 @@
 #include "fhiclcpp/ParameterSet.h"
 #include "art/Framework/Principal/Handle.h"
 #include "art/Framework/Core/EDProducer.h"
+#include "messagefacility/MessageLogger/MessageLogger.h"
 // utilities
 #include "Offline/ProditionsService/inc/ProditionsHandle.hh"
 #include "Offline/GlobalConstantsService/inc/GlobalConstantsHandle.hh"
@@ -29,6 +30,8 @@
 #include <string>
 #include <functional>
 #include <float.h>
+#include <cmath>
+#include <algorithm>
 #include <vector>
 using namespace std;
 using CLHEP::Hep3Vector;
@@ -178,6 +181,21 @@ namespace mu2e
         }
       }
 
+      // A KalSeed with no active hits is a failed fit: every hit-fraction
+      // feature below is 0/0 (NaN) or n/0 (inf). Do not score it -- mark it
+      // bad, as is already done for a track without a tracker entrance.
+      // XGBoost rejects an inf feature outright (v02_01_00 aborted a
+      // production ntuple job on one such track), and the ANN would
+      // silently return garbage.
+      if (nactive == 0) {
+        mf::LogWarning("TrackQuality") << "KalSeed with " << nhits
+          << " hits and none active in " << event.id()
+          << "; assigning quality 0";
+        anncol->push_back(MVAResult(0));
+        bdtcol->push_back(MVAResult(0));
+        continue;
+      }
+
       int ndof = nactive -5;
       if (kalSeed.hasCaloCluster()) {
         ++ndof;
@@ -212,6 +230,20 @@ namespace mu2e
       if (!entrance_found) {
         features[2] = -9999;
         features[5] = -9999;
+      }
+
+      // Belt and braces: a non-finite feature from any other source (e.g. a
+      // blown-up covariance in momerr) also means "not a good track".
+      // XGBoost treats NaN as missing but aborts on inf, so neither may
+      // reach the models.
+      if (std::any_of(features.begin(), features.end(),
+                      [](float f) { return !std::isfinite(f); })) {
+        mf::LogWarning("TrackQuality") << "non-finite TrkQual feature in "
+          << event.id() << " (nactive=" << nactive << ", nhits=" << nhits
+          << "); assigning quality 0";
+        anncol->push_back(MVAResult(0));
+        bdtcol->push_back(MVAResult(0));
+        continue;
       }
 
       Ort::Value input_tensor = Ort::Value::CreateTensor<float>(_memory_info,
