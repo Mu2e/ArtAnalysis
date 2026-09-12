@@ -124,6 +124,12 @@ namespace mu2e
         throw cet::exception("TrackQuality") << "XGBoosterLoadModel failed: " << XGBGetLastError();
       }
 
+      // XGBoost sizes its OpenMP pool to the whole machine unless told otherwise.  Inference
+      // here is one row per track, so that pool costs far more in fork/join than it saves.
+      if (XGBoosterSetParam(_booster, "nthread", "1") != 0) {
+        throw cet::exception("TrackQuality") << "XGBoosterSetParam(nthread) failed: " << XGBGetLastError();
+      }
+
       // verify the loaded model matches the expected feature count
       bst_ulong nFeaturesModel = 0;
       if (XGBoosterGetNumFeature(_booster, &nFeaturesModel) != 0) {
