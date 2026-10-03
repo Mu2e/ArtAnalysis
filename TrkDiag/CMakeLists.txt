@@ -157,6 +157,8 @@ cet_build_plugin(TrackQuality art::module
       Offline::Mu2eUtilities
       Offline::ProditionsService
       Offline::RecoDataProducts
+      onnxruntime
+      xgboost
 )
 
 
